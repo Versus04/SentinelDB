@@ -1,0 +1,29 @@
+# Compiled executables
+*.exe
+*.out
+sentinel
+sentinel.exe
+
+# Object files
+*.o
+*.obj
+
+# Database files
+*.log
+*.db
+data.log
+snapshot.db
+
+# Windows specific
+Thumbs.db
+Desktop.ini
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*~
