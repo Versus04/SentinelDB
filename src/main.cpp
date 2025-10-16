@@ -2,6 +2,9 @@
 #include <unordered_map>
 #include <fstream>
 #include <sstream>
+#include <thread>
+#include <mutex>
+#include <vector>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
@@ -63,42 +66,6 @@ class SentinelDB{
 int main()
 {
     SentinelDB db;
-    /*std::string line,cmd,key,value;
-    std::cout << "SentinelDB v0.1\nType commands: SET/GET/DEL/SAVE/EXIT\n";
-
-    while(true)
-    {
-        std::cout << ">> ";
-        std::getline(std::cin,line);
-        std::istringstream iss(line);
-        iss>>cmd;
-            if(cmd=="SET")
-            {
-                iss>>key;
-                iss>>value;
-                db.set(key,value);
-            }
-            else if(cmd=="GET")
-            {
-                iss>>key;
-                std::cout<<db.get(key)<<"\n";
-            }
-            else if(cmd=="DEL")
-            {
-                iss>>key;
-                db.del(key);
-            }
-            else if(cmd=="SAVE")
-            {
-                db.save();
-            }
-            else if(cmd=="EXIT"){
-                break;
-            }
-            else{
-                std::cout<<"Unknown Command";
-            }
-    }*/
    WSADATA wsaData;
    WSAStartup(MAKEWORD(2,2), &wsaData);  // Initialize Winsock library
 
