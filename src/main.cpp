@@ -5,6 +5,7 @@
 #include <thread>
 #include <mutex>
 #include <vector>
+#include <algorithm>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
@@ -62,50 +63,17 @@ class SentinelDB{
          std::cout << "Snapshot saved.\n";
     }
 
+
 };
-int main()
+std::mutex db_mutex;
+void handleclient(SOCKET clisocket , SentinelDB& db)
 {
-    SentinelDB db;
-   WSADATA wsaData;
-   WSAStartup(MAKEWORD(2,2), &wsaData);  // Initialize Winsock library
-
-   int sockfd;
-   sockfd = socket(AF_INET, SOCK_STREAM, 0);
-   if (sockfd == INVALID_SOCKET) {
-    std::cout << "Failed to create socket" << std::endl;
-     WSACleanup();
-    return 1;
-  }
-  std::cout << "Socket created successfully" << std::endl;
-  sockaddr_in seraddress;
-  seraddress.sin_family=AF_INET;
-  seraddress.sin_port=htons(8080);
-  seraddress.sin_addr.s_addr=INADDR_ANY;
-  if(bind(sockfd,(sockaddr*)&seraddress,sizeof(seraddress))==SOCKET_ERROR)
-  {
-    std::cout<<"Binding Failed"<<std::endl;
-    closesocket(sockfd);
-    WSACleanup();
-    return 1;
-  }
-    std::cout << "Server listening on port 8080..." << std::endl;
-    listen(sockfd, SOMAXCONN);
-    sockaddr_in clientAddr;
-    int clientsize = sizeof(clientAddr);
-    SOCKET clisocket = accept(sockfd,(sockaddr*)&clientAddr,&clientsize);
-    if(clisocket==INVALID_SOCKET)
-    {
-        std::cout<<"Accept Failed"<<std::endl;
-        closesocket(sockfd);
-        WSACleanup();
-        return 1;
-
-    }
     std::cout << "✅ Client connected!" << std::endl;
     char buffer[1024];
     std::string commandBuffer;
     while(true)
     {
+       
         std::cout << "📡 Waiting for client input..." << std::endl;
 
         int byterec =   recv(clisocket,buffer,sizeof(buffer)-1,0);
@@ -116,6 +84,11 @@ int main()
         }
         buffer[byterec]='\0';
         commandBuffer += buffer;
+        commandBuffer.erase(
+    std::remove_if(commandBuffer.begin(), commandBuffer.end(),
+        [](unsigned char c){ return c == 255; }),
+    commandBuffer.end()
+);
         size_t pos;
         while((pos = commandBuffer.find_first_of("\r\n")) != std::string::npos){
 
@@ -139,24 +112,30 @@ int main()
         {
             iss>>key;
             iss>>value;
-            db.set(key,value);
+            {
+                std::lock_guard<std::mutex> lock(db_mutex);
+                db.set(key,value);}
             reply = "+OK\r\n";
         }
         else if(cmd=="GET")
         {
             iss>>key;
             //std::cout<<db.get(key)<<"\n";
-            reply = db.get(key) + "\r\n";
+           {
+            std::lock_guard<std::mutex> lock(db_mutex);
+             reply = db.get(key) + "\r\n";}
         }
         else if(cmd=="DEL")
         {
             iss>>key;
-            db.del(key);
-             reply = "+OK\r\n";
+            {std::lock_guard<std::mutex> lock(db_mutex);
+                db.del(key);}
+            reply = "+OK\r\n";
         }
         else if(cmd=="SAVE")
         {
-            db.save();
+            {std::lock_guard<std::mutex> lock(db_mutex);
+                    db.save();}
             
             reply = "+Snapshot saved\r\n";
         }
@@ -164,7 +143,7 @@ int main()
             reply = "BYE\r\n";
         send(clisocket, reply.c_str(), reply.size(), 0);
         std::cout << "Client requested exit.\n";
-        goto cleanup; 
+            
             break;
         }
         else{
@@ -175,8 +154,67 @@ int main()
     
     }
         
-  cleanup:
+  
   closesocket(clisocket);
+  std::cout << "🧵 Client thread ending.\n";
+}
+
+int main()
+{
+   
+
+SentinelDB db;
+   WSADATA wsaData;
+   WSAStartup(MAKEWORD(2,2), &wsaData);  // Initialize Winsock library
+
+   int sockfd;
+   sockfd = socket(AF_INET, SOCK_STREAM, 0);
+   if (sockfd == INVALID_SOCKET) {
+    std::cout << "Failed to create socket" << std::endl;
+     WSACleanup();
+    return 1;
+  }
+  std::cout << "Socket created successfully" << std::endl;
+  sockaddr_in seraddress;
+  seraddress.sin_family=AF_INET;
+  seraddress.sin_port=htons(8080);
+  seraddress.sin_addr.s_addr=INADDR_ANY;
+  BOOL opt = TRUE;
+setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+
+  if(bind(sockfd,(sockaddr*)&seraddress,sizeof(seraddress))==SOCKET_ERROR)
+  {
+    std::cout<<"Binding Failed"<<std::endl;
+    closesocket(sockfd);
+    WSACleanup();
+    return 1;
+  }
+    std::cout << "Server listening on port 8080..." << std::endl;
+    if (listen(sockfd, SOMAXCONN) == SOCKET_ERROR) {
+    std::cout << "Listen failed. Error: " << WSAGetLastError() << std::endl;
+    closesocket(sockfd);
+    WSACleanup();
+    return 1;
+}
+
+    int clientCounter = 0;
+    sockaddr_in clientAddr;
+    int clientsize = sizeof(clientAddr);
+    
+    while(true)
+    {
+    SOCKET clisocket = accept(sockfd,(sockaddr*)&clientAddr,&clientsize);
+    if(clisocket==INVALID_SOCKET)
+    {
+        std::cout << "Accept Failed: " << WSAGetLastError() << std::endl;
+        continue;
+        
+
+    }
+     clientCounter++;
+      std::thread(handleclient, clisocket, std::ref(db)).detach();
+    }
+   
   closesocket(sockfd);
   WSACleanup();
 
