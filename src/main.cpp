@@ -158,6 +158,19 @@ void handleclient(SOCKET clisocket , SentinelDB& db)
   closesocket(clisocket);
   std::cout << "🧵 Client thread ending.\n";
 }
+void autosave(SentinelDB& db , int sleeptime)
+{
+    while(true){
+        std::this_thread::sleep_for(std::chrono::seconds(sleeptime));
+        {
+        std::lock_guard<std::mutex>lock(db_mutex);
+        db.save();
+    }
+    std::time_t now = std::time(nullptr); 
+         std::cout << "[AUTO] Snapshot saved in background.\n"<< std::ctime(&now);
+}
+
+}
 
 int main()
 {
@@ -200,9 +213,10 @@ setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
     int clientCounter = 0;
     sockaddr_in clientAddr;
     int clientsize = sizeof(clientAddr);
-    
+     std::thread(autosave,std::ref(db),10).detach();
     while(true)
     {
+       
     SOCKET clisocket = accept(sockfd,(sockaddr*)&clientAddr,&clientsize);
     if(clisocket==INVALID_SOCKET)
     {
