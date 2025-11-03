@@ -178,7 +178,7 @@ void autosave(SentinelDB &db, int sleeptime) {
 
 int main() {
     SentinelDB db;
-    cout<<"Welcome to the server";
+    std::cout<<"Welcome to the server";
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         std::cerr << "Socket creation failed!\n";
