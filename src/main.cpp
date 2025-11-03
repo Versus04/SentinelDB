@@ -8,6 +8,9 @@
 #include <algorithm>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <filesystem>
+#include <shared_mutex>
+    std::shared_mutex db_mutex;
 
 class SentinelDB{
     std::unordered_map<std::string,std::string> mpp;
@@ -16,6 +19,23 @@ class SentinelDB{
         SentinelDB(const std::string& filename = "data.log") {
         logfile.open(filename, std::ios::app);
         load(filename);
+    }
+
+    void compact()
+    {
+        std::unique_lock<std::shared_mutex> lock(db_mutex);
+        std::string tempFile = "data.log.tmp";
+    std::ofstream temp(tempFile, std::ios::trunc);
+    for (auto &it : mpp) {
+        temp << "SET " << it.first << " " << it.second << "\n";
+    }
+    temp.close();
+    logfile.close();
+    std::filesystem::remove("data.log");
+    std::filesystem::rename(tempFile, "data.log");
+    logfile.open("data.log", std::ios::app);
+
+    std::cout << "🧹 WAL Compaction completed successfully.\n";
     }
     void load(const std::string& filename)
     {
@@ -65,7 +85,6 @@ class SentinelDB{
 
 
 };
-std::mutex db_mutex;
 void handleclient(SOCKET clisocket , SentinelDB& db)
 {
     std::cout << "✅ Client connected!" << std::endl;
@@ -113,7 +132,7 @@ void handleclient(SOCKET clisocket , SentinelDB& db)
             iss>>key;
             iss>>value;
             {
-                std::lock_guard<std::mutex> lock(db_mutex);
+                std::unique_lock<std::shared_mutex> lock(db_mutex);
                 db.set(key,value);}
             reply = "+OK\r\n";
         }
@@ -122,19 +141,22 @@ void handleclient(SOCKET clisocket , SentinelDB& db)
             iss>>key;
             //std::cout<<db.get(key)<<"\n";
            {
-            std::lock_guard<std::mutex> lock(db_mutex);
+            std::shared_lock<std::shared_mutex> lock(db_mutex);
+
              reply = db.get(key) + "\r\n";}
         }
         else if(cmd=="DEL")
         {
             iss>>key;
-            {std::lock_guard<std::mutex> lock(db_mutex);
+            {std::unique_lock<std::shared_mutex> lock(db_mutex);
+
                 db.del(key);}
             reply = "+OK\r\n";
         }
         else if(cmd=="SAVE")
         {
-            {std::lock_guard<std::mutex> lock(db_mutex);
+            {std::unique_lock<std::shared_mutex> lock(db_mutex);
+
                     db.save();}
             
             reply = "+Snapshot saved\r\n";
@@ -163,7 +185,8 @@ void autosave(SentinelDB& db , int sleeptime)
     while(true){
         std::this_thread::sleep_for(std::chrono::seconds(sleeptime));
         {
-        std::lock_guard<std::mutex>lock(db_mutex);
+        std::unique_lock<std::shared_mutex> lock(db_mutex);
+
         db.save();
     }
     std::time_t now = std::time(nullptr); 
@@ -213,7 +236,7 @@ setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
     int clientCounter = 0;
     sockaddr_in clientAddr;
     int clientsize = sizeof(clientAddr);
-     std::thread(autosave,std::ref(db),10).detach();
+    // std::thread(autosave,std::ref(db),10).detach();
     while(true)
     {
        
